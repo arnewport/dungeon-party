@@ -2,18 +2,15 @@ package main
 
 // PARTY
 
+// ItemsByID All items that exist in the world by ID.
+var ItemsByID = make(map[int]*Item)
+
 var State = Party{
 	Characters: []Character{},
-	Items:      []Item{}, // Items carried by an unspecified member of the party. Acts as an item sorting space
-	Limbo:      []Item{}, // Items available to be picked up in the world
-	Storage:    []Item{}, // Items stored safely in the world
 }
 
 type Party struct {
 	Characters []Character
-	Items      []Item
-	Limbo      []Item
-	Storage    []Item
 }
 
 // CHARACTER
@@ -21,9 +18,9 @@ type Party struct {
 type Character struct {
 	ID               int
 	Name             string
-	Class            string
+	Class            CharacterClass
 	Level            int
-	Alignment        string
+	Alignment        Alignment
 	ArmorBonus       int
 	RolledHitPoints  int
 	CurrentHitPoints int
@@ -33,7 +30,7 @@ type Character struct {
 	Dexterity        int
 	Constitution     int
 	Charisma         int
-	Items            []Item
+	Items            []int
 	ArmorID          int
 	ShieldID         int
 	ArcaneSpells     bool
@@ -42,20 +39,59 @@ type Character struct {
 	MemorizedSpells  []MemorizedSpell
 }
 
+type CharacterClass string
+
+const (
+	ClassNone      CharacterClass = ""
+	ClassCleric    CharacterClass = "cleric"
+	ClassFighter   CharacterClass = "fighter"
+	ClassMagicUser CharacterClass = "magicuser"
+	ClassThief     CharacterClass = "thief"
+	ClassDwarf     CharacterClass = "dwarf"
+	ClassElf       CharacterClass = "elf"
+	ClassHalfling  CharacterClass = "halfling"
+)
+
+type Alignment string
+
+const (
+	AlignmentNone    Alignment = ""
+	AlignmentLawful  Alignment = "lawful"
+	AlignmentNeutral Alignment = "neutral"
+	AlignmentChaotic Alignment = "chaotic"
+)
+
 // ITEMS
 
 type Item struct {
 	ID       int
+	HolderID int
 	Name     string
-	Type     string // "item", "weapon", "armor", "shield", "jewelry", "rodwandstaff"
+	Type     ItemType
 	Location ItemLocation
 	URL      string
 }
 
-type ItemLocation struct {
-	Type        string // "character", "limbo", "party", "storage"
-	CharacterID *int   // If Type == "character"
-}
+type ItemType string
+
+const (
+	ItemGeneric      ItemType = "item"
+	ItemWeapon       ItemType = "weapon"
+	ItemArmor        ItemType = "armor"
+	ItemShield       ItemType = "shield"
+	ItemJewelry      ItemType = "jewelry"
+	ItemRodWandStaff ItemType = "rodwandstaff"
+)
+
+type ItemLocation string
+
+const (
+	LocationNone      ItemLocation = "none"
+	LocationCharacter ItemLocation = "character" // Items carried by a specified member of the party
+	LocationParty     ItemLocation = "party"     // Items carried by an unspecified member of the party; acts as an intra-party item sorting space
+	LocationStorage   ItemLocation = "storage"   // Items stored safely in the world
+	LocationLimbo     ItemLocation = "limbo"     // Items available to be picked up in the world
+)
 
 type Weapon struct {
 	Item
@@ -97,7 +133,10 @@ type Jewelry struct {
 
 type RodWandStaff struct {
 	Item
-	Charges int
+	Charges         int
+	ArcaneAllowed   bool
+	DivineAllowed   bool
+	NonMagicAllowed bool
 }
 
 // SPELLS
