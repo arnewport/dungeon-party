@@ -149,15 +149,160 @@ type RodWandStaff struct {
 
 // SPELLS
 
+var SpellsByID = map[int]Spell{}
+
+var ArcaneSpellIDs = []int{}
+var DivineSpellIDs = []int{}
+
+type SpellValidationConfig struct {
+	EnforceKnown bool // cannot know more spells than you can cast
+	EnforceLevel bool // cannot learn spells of a higher level than you can cast (learning != memorizing)
+}
+
+var SpellRules = SpellValidationConfig{true, true}
+
 type Spell struct {
 	ID    int
 	Name  string
 	Level int
+	Type  SpellType
 }
+
+type SpellType string
+
+const (
+	SpellArcane SpellType = "arcane"
+	SpellDivine SpellType = "divine"
+)
 
 type MemorizedSpell struct {
 	SpellID int
 	Cast    bool
+}
+
+func AddKnownSpell(c *Character, spellID int) error {
+	if _, ok := SpellsByID[spellID]; !ok {
+		return fmt.Errorf("spell %d not found", spellID)
+	}
+	for _, id := range c.KnownSpells {
+		if id == spellID {
+			return fmt.Errorf("spell %d already known", spellID)
+		}
+	}
+	c.KnownSpells = append(c.KnownSpells, spellID)
+	return nil
+}
+
+func RemoveKnownSpell(c *Character, spellID int) {
+	for i, id := range c.KnownSpells {
+		if id == spellID {
+			c.KnownSpells = append(c.KnownSpells[:i], c.KnownSpells[i+1:]...)
+			return
+		}
+	}
+}
+
+func CanLearnSpell(c *Character, spellID int) error {
+	spell, ok := SpellsByID[spellID]
+	if !ok {
+		return fmt.Errorf("spell %d does not exist", spellID)
+	}
+
+	// Check if already known
+	for _, id := range c.KnownSpells {
+		if id == spellID {
+			return fmt.Errorf("spell %s already known", spell.Name)
+		}
+	}
+
+	// Determine how many spells of this level are already known
+	spellLevel := spell.Level
+	knownAtLevel := 0
+	for _, id := range c.KnownSpells {
+		s, ok := SpellsByID[id]
+		if !ok {
+			continue
+		}
+		if s.Level == spellLevel {
+			knownAtLevel++
+		}
+	}
+
+	// Determine how many spells can be known at this level
+	allowed := GetSpellSlots(c.Class, c.Level, spellLevel)
+	if knownAtLevel >= allowed {
+		return fmt.Errorf("too many known spells at level %d (limit %d)", spellLevel, allowed)
+	}
+
+	return nil
+}
+
+func GetSpellSlots(class CharacterClass, level int, spellLevel int) int {
+	byClass, ok := spellSlotTables[class]
+	if !ok {
+		return 0
+	}
+	byLevel, ok := byClass[level]
+	if !ok {
+		return 0
+	}
+	return byLevel[spellLevel]
+}
+
+func MaxSpellLevelAvailable(class CharacterClass, level int) int {
+	classTable, ok := spellSlotTables[class]
+	if !ok {
+		return 0
+	}
+	levelTable, ok := classTable[level]
+	if !ok {
+		return 0
+	}
+
+	maxLevel := 0
+	for spellLevel, count := range levelTable {
+		if count > 0 && spellLevel > maxLevel {
+			maxLevel = spellLevel
+		}
+	}
+
+	return maxLevel
+}
+
+// spellSlotTables[class][charLevel][spellLevel] = number of slots
+var spellSlotTables = map[CharacterClass]map[int]map[int]int{
+	ClassCleric: {
+		1:  {},
+		2:  {1: 1},
+		3:  {1: 2},
+		4:  {1: 2, 2: 1},
+		5:  {1: 2, 2: 2},
+		6:  {1: 2, 2: 2, 3: 1, 4: 1},
+		7:  {1: 2, 2: 2, 3: 2, 4: 1, 5: 1},
+		8:  {1: 3, 2: 3, 3: 2, 4: 2, 5: 1},
+		9:  {1: 3, 2: 3, 3: 3, 4: 2, 5: 2},
+		10: {1: 4, 2: 4, 3: 3, 4: 3, 5: 2},
+		11: {1: 4, 2: 4, 3: 4, 4: 3, 5: 3},
+		12: {1: 5, 2: 5, 3: 4, 4: 4, 5: 3},
+		13: {1: 5, 2: 5, 3: 5, 4: 4, 5: 4},
+		14: {1: 6, 2: 5, 3: 5, 4: 5, 5: 4},
+	},
+	ClassMagicUser: {
+		1:  {1: 1},
+		2:  {1: 2},
+		3:  {1: 2, 2: 1},
+		4:  {1: 2, 2: 2},
+		5:  {1: 2, 2: 2, 3: 1},
+		6:  {1: 2, 2: 2, 3: 2},
+		7:  {1: 3, 2: 2, 3: 2, 4: 1},
+		8:  {1: 3, 2: 3, 3: 2, 4: 2},
+		9:  {1: 3, 2: 3, 3: 3, 4: 2, 5: 1},
+		10: {1: 3, 2: 3, 3: 3, 4: 3, 5: 2},
+		11: {1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 1},
+		12: {1: 4, 2: 4, 3: 3, 4: 3, 5: 3, 6: 2},
+		13: {1: 4, 2: 4, 3: 4, 4: 3, 5: 3, 6: 3},
+		14: {1: 4, 2: 4, 3: 4, 4: 4, 5: 3, 6: 3},
+	},
 }
 
 // REGISTRATION
