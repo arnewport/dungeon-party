@@ -1,9 +1,8 @@
 package main
 
-// PARTY
+import "fmt"
 
-// ItemsByID All items that exist in the world by ID.
-var ItemsByID = make(map[int]*Item)
+// PARTY
 
 var State = Party{
 	Characters: []Character{},
@@ -12,6 +11,15 @@ var State = Party{
 type Party struct {
 	Characters []Character
 }
+
+// REGISTRIES
+
+var ItemsByID = map[int]*Item{}
+var WeaponsByID = map[int]*Weapon{}
+var ArmorByID = map[int]*Armor{}
+var ShieldsByID = map[int]*Shield{}
+var JewelryByID = map[int]*Jewelry{}
+var RodsWandsStavesByID = map[int]*RodWandStaff{}
 
 // CHARACTER
 
@@ -150,4 +158,89 @@ type Spell struct {
 type MemorizedSpell struct {
 	SpellID int
 	Cast    bool
+}
+
+// REGISTRATION
+
+func RegisterItem(item Item) error {
+	if _, exists := ItemsByID[item.ID]; exists {
+		return fmt.Errorf("item with ID %d already registered", item.ID)
+	}
+	ItemsByID[item.ID] = &item
+	return nil
+}
+
+func RegisterWeapon(w Weapon) error {
+	if _, exists := WeaponsByID[w.ID]; exists {
+		return fmt.Errorf("weapon with ID %d already registered", w.ID)
+	}
+	WeaponsByID[w.ID] = &w
+	return nil
+}
+
+func RegisterArmor(a Armor) error {
+	if _, exists := ArmorByID[a.ID]; exists {
+		return fmt.Errorf("armor with ID %d already registered", a.ID)
+	}
+	ArmorByID[a.ID] = &a
+	return nil
+}
+
+func RegisterShield(s Shield) error {
+	if _, exists := ShieldsByID[s.ID]; exists {
+		return fmt.Errorf("shield with ID %d already registered", s.ID)
+	}
+	ShieldsByID[s.ID] = &s
+	return nil
+}
+
+func RegisterJewelry(j Jewelry) error {
+	if _, exists := JewelryByID[j.ID]; exists {
+		return fmt.Errorf("jewelry with ID %d already registered", j.ID)
+	}
+	JewelryByID[j.ID] = &j
+	return nil
+}
+
+func RegisterRodWandStaff(r RodWandStaff) error {
+	if _, exists := RodsWandsStavesByID[r.ID]; exists {
+		return fmt.Errorf("rod, wand, or staff with ID %d already registered", r.ID)
+	}
+	RodsWandsStavesByID[r.ID] = &r
+	return nil
+}
+
+func UnregisterItem(id int) {
+	delete(ItemsByID, id)
+	delete(WeaponsByID, id)
+	delete(ArmorByID, id)
+	delete(ShieldsByID, id)
+	delete(JewelryByID, id)
+	delete(RodsWandsStavesByID, id)
+}
+
+// GETTERS
+
+func GetItemByID(id int) *Item {
+	return ItemsByID[id]
+}
+
+func GetWeaponByID(id int) *Weapon {
+	return WeaponsByID[id]
+}
+
+func GetArmorByID(id int) *Armor {
+	return ArmorByID[id]
+}
+
+func GetShieldByID(id int) *Shield {
+	return ShieldsByID[id]
+}
+
+func GetJewelryByID(id int) *Jewelry {
+	return JewelryByID[id]
+}
+
+func GetRodWandStaffByID(id int) *RodWandStaff {
+	return RodsWandsStavesByID[id]
 }

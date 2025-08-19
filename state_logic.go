@@ -48,9 +48,9 @@ func AddCharacter(p *Party, name string) Character {
 
 // DeleteCharacter moves all of the character's items to Limbo, then removes the character.
 func DeleteCharacter(charID int, p *Party) error {
-	ch := findChar(p, charID)
-	if ch == nil {
-		return fmt.Errorf("character %d not found", charID)
+	_, err := findChar(p, charID)
+	if err != nil {
+		return err
 	}
 
 	// Re-home all items first (clears equips as a side effect).
@@ -228,13 +228,36 @@ func ValidateCharacterPatch(p CharacterPatch) error {
 }
 
 // Lookups
-func findChar(p *Party, id int) *Character {
+func findChar(p *Party, id int) (*Character, error) {
 	for i := range p.Characters {
 		if p.Characters[i].ID == id {
-			return &p.Characters[i]
+			return &p.Characters[i], nil
 		}
 	}
-	return nil
+	return nil, fmt.Errorf("character %d not found", id)
+}
+
+// FindItemByID Cycles through all registries, looking for an item
+func FindItemByID(id int) (*Item, error) {
+	if it, ok := ItemsByID[id]; ok {
+		return it, nil
+	}
+	if w, ok := WeaponsByID[id]; ok {
+		return &w.Item, nil
+	}
+	if a, ok := ArmorByID[id]; ok {
+		return &a.Item, nil
+	}
+	if s, ok := ShieldsByID[id]; ok {
+		return &s.Item, nil
+	}
+	if j, ok := JewelryByID[id]; ok {
+		return &j.Item, nil
+	}
+	if r, ok := RodsWandsStavesByID[id]; ok {
+		return &r.Item, nil
+	}
+	return nil, fmt.Errorf("item %d not found", id)
 }
 
 // Inventory utilities
@@ -263,7 +286,7 @@ func ValidateCharacterInventory(c *Character) error {
 		return fmt.Errorf("inventory over capacity")
 	}
 	for _, id := range c.Items {
-		if _, ok := ItemsByID[id]; !ok {
+		if _, err := FindItemByID(id); err != nil {
 			return fmt.Errorf("unknown item id %d", id)
 		}
 		if _, dup := seen[id]; dup {
@@ -289,13 +312,13 @@ func ValidateCharacterInventory(c *Character) error {
 
 // MoveItemToCharacter Moves (do all checks first, then mutate)
 func MoveItemToCharacter(itemID, charID int, p *Party) error {
-	it, ok := ItemsByID[itemID]
-	if !ok {
-		return fmt.Errorf("item %d not found", itemID)
+	it, err := FindItemByID(itemID)
+	if err != nil {
+		return err
 	}
-	ch := findChar(p, charID)
-	if ch == nil {
-		return fmt.Errorf("character %d not found", charID)
+	ch, err := findChar(p, charID)
+	if err != nil {
+		return err
 	}
 	if hasID(ch.Items, itemID) {
 		return nil
@@ -306,7 +329,7 @@ func MoveItemToCharacter(itemID, charID int, p *Party) error {
 
 	// if coming from another character, detach there
 	if it.Location == LocationCharacter && it.HolderID != charID {
-		if prev := findChar(p, it.HolderID); prev != nil {
+		if prev, _ := findChar(p, it.HolderID); prev != nil {
 			prev.Items = removeID(prev.Items, itemID)
 			if prev.ArmorID == itemID {
 				prev.ArmorID = 0
@@ -331,13 +354,13 @@ func MoveItemToStorage(itemID int, p *Party) error {
 func MoveItemToLimbo(itemID int, p *Party) error { return moveItemToBucket(itemID, LocationLimbo, p) }
 
 func moveItemToBucket(itemID int, loc ItemLocation, p *Party) error {
-	it, ok := ItemsByID[itemID]
-	if !ok {
-		return fmt.Errorf("item %d not found", itemID)
+	it, err := FindItemByID(itemID)
+	if err != nil {
+		return err
 	}
 	// detach from character if needed
 	if it.Location == LocationCharacter {
-		if ch := findChar(p, it.HolderID); ch != nil {
+		if ch, _ := findChar(p, it.HolderID); ch != nil {
 			ch.Items = removeID(ch.Items, itemID)
 			if ch.ArmorID == itemID {
 				ch.ArmorID = 0
@@ -352,15 +375,14 @@ func moveItemToBucket(itemID int, loc ItemLocation, p *Party) error {
 	return nil
 }
 
-// EquipArmor Equip helpers (tiny and explicit)
 func EquipArmor(charID, itemID int, p *Party) error {
-	ch := findChar(p, charID)
+	ch, _ := findChar(p, charID)
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
-	it, ok := ItemsByID[itemID]
-	if !ok {
-		return fmt.Errorf("item %d not found", itemID)
+	it, err := FindItemByID(itemID)
+	if err != nil {
+		return err
 	}
 	if it.Location != LocationCharacter || it.HolderID != charID {
 		return fmt.Errorf("item not owned by character")
@@ -371,22 +393,38 @@ func EquipArmor(charID, itemID int, p *Party) error {
 	if !hasID(ch.Items, itemID) {
 		return fmt.Errorf("item not in inventory list")
 	}
-	if ch.Class == ClassMagicUser {
 
+	var allowedArmorTypes = map[CharacterClass]map[ArmorType]bool{
+		ClassMagicUser: {
+			Robes: true,
+		},
+		ClassThief: {
+			Robes:   true,
+			Leather: true,
+		},
 	}
-	if ch.Class == ClassThief && it.Type
+
+	armor, ok := ArmorByID[itemID]
+	if !ok {
+		return fmt.Errorf("armor data for item %d not found", itemID)
+	}
+	if allowed, ok := allowedArmorTypes[ch.Class]; ok {
+		if !allowed[armor.Type] {
+			return fmt.Errorf("%s cannot wear %s", ch.Class, armor.Type)
+		}
+	}
 	ch.ArmorID = itemID
 	return nil
 }
 
 func EquipShield(charID, itemID int, p *Party) error {
-	ch := findChar(p, charID)
+	ch, _ := findChar(p, charID)
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
-	it, ok := ItemsByID[itemID]
-	if !ok {
-		return fmt.Errorf("item %d not found", itemID)
+	it, err := FindItemByID(itemID)
+	if err != nil {
+		return err
 	}
 	if it.Location != LocationCharacter || it.HolderID != charID {
 		return fmt.Errorf("item not owned by character")
@@ -397,13 +435,20 @@ func EquipShield(charID, itemID int, p *Party) error {
 	if !hasID(ch.Items, itemID) {
 		return fmt.Errorf("item not in inventory list")
 	}
+	var disallowedShieldClasses = map[CharacterClass]bool{
+		ClassMagicUser: true,
+		ClassThief:     true,
+	}
+	if disallowedShieldClasses[ch.Class] {
+		return fmt.Errorf("%s cannot equip shield", ch.Class)
+	}
 	ch.ShieldID = itemID
 	return nil
 }
 
 // UnequipArmor clears a character's equipped armor, leaving the item in inventory.
 func UnequipArmor(charID int, p *Party) error {
-	ch := findChar(p, charID)
+	ch, _ := findChar(p, charID)
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
@@ -416,7 +461,7 @@ func UnequipArmor(charID int, p *Party) error {
 
 // UnequipShield clears a character's equipped shield, leaving the item in inventory.
 func UnequipShield(charID int, p *Party) error {
-	ch := findChar(p, charID)
+	ch, _ := findChar(p, charID)
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
@@ -438,7 +483,7 @@ func MoveAllFromCharacter(charID int, to ItemLocation, p *Party) error {
 		return fmt.Errorf("unsupported target location: %v", to)
 	}
 
-	ch := findChar(p, charID)
+	ch, _ := findChar(p, charID)
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
@@ -448,19 +493,8 @@ func MoveAllFromCharacter(charID int, to ItemLocation, p *Party) error {
 	copy(itemIDs, ch.Items)
 
 	for _, id := range itemIDs {
-		switch to {
-		case LocationParty:
-			if err := moveItemToBucket(id, LocationParty, p); err != nil {
-				return err
-			}
-		case LocationStorage:
-			if err := moveItemToBucket(id, LocationStorage, p); err != nil {
-				return err
-			}
-		case LocationLimbo:
-			if err := moveItemToBucket(id, LocationLimbo, p); err != nil {
-				return err
-			}
+		if err := moveItemToBucket(id, to, p); err != nil {
+			return err
 		}
 	}
 
@@ -476,13 +510,13 @@ func MoveAllFromCharacter(charID int, to ItemLocation, p *Party) error {
 // DumpInventory returns a human-readable string listing all items a character holds.
 // Marks equipped armor and shield.
 func DumpInventory(charID int, p *Party) (string, error) {
-	ch := findChar(p, charID)
+	ch, _ := findChar(p, charID)
 	if ch == nil {
 		return "", fmt.Errorf("character %d not found", charID)
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "Inventory for %s (ID %d):\n", ch.Name, ch.ID)
+	_, _ = fmt.Fprintf(&b, "Inventory for %s (ID %d):\n", ch.Name, ch.ID)
 
 	if len(ch.Items) == 0 {
 		b.WriteString("  (no items)\n")
@@ -490,9 +524,9 @@ func DumpInventory(charID int, p *Party) (string, error) {
 	}
 
 	for _, id := range ch.Items {
-		it, ok := ItemsByID[id]
-		if !ok {
-			fmt.Fprintf(&b, "  [Missing item ID %d]\n", id)
+		it, err := FindItemByID(id)
+		if err != nil {
+			_, _ = fmt.Fprintf(&b, "  [Missing item ID %d]\n", id)
 			continue
 		}
 		equipMarker := ""
@@ -502,7 +536,7 @@ func DumpInventory(charID int, p *Party) (string, error) {
 		case ch.ShieldID:
 			equipMarker = " (equipped shield)"
 		}
-		fmt.Fprintf(&b, "  - %s [%s]%s\n", it.Name, it.Type, equipMarker)
+		_, _ = fmt.Fprintf(&b, "  - %s [%s]%s\n", it.Name, it.Type, equipMarker)
 	}
 
 	return b.String(), nil
