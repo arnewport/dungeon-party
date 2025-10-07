@@ -37,8 +37,7 @@ func AddCharacter(p *Party, name string) Character {
 		Items:            []int{},
 		ArmorID:          0,
 		ShieldID:         0,
-		ArcaneSpells:     false,
-		DivineSpells:     false,
+		Spellcasting:     []SpellType{},
 		KnownSpells:      []int{},
 		MemorizedSpells:  []MemorizedSpell{},
 	}
@@ -118,11 +117,8 @@ func ApplyCharacterPatch(c *Character, patch CharacterPatch) {
 	if patch.ShieldID != nil {
 		c.ShieldID = *patch.ShieldID
 	}
-	if patch.ArcaneSpells != nil {
-		c.ArcaneSpells = *patch.ArcaneSpells
-	}
-	if patch.DivineSpells != nil {
-		c.DivineSpells = *patch.DivineSpells
+	if patch.Spellcasting != nil {
+		c.Spellcasting = *patch.Spellcasting
 	}
 	if patch.KnownSpells != nil {
 		c.KnownSpells = *patch.KnownSpells
@@ -149,8 +145,7 @@ type CharacterPatch struct {
 	Items            *[]int
 	ArmorID          *int
 	ShieldID         *int
-	ArcaneSpells     *bool
-	DivineSpells     *bool
+	Spellcasting     *[]SpellType
 	KnownSpells      *[]int
 	MemorizedSpells  *[]MemorizedSpell
 }
@@ -254,7 +249,7 @@ func FindItemByID(id int) (*Item, error) {
 	if j, ok := JewelryByID[id]; ok {
 		return &j.Item, nil
 	}
-	if r, ok := RodsWandsStavesByID[id]; ok {
+	if r, ok := LimitedUseItemsByID[id]; ok {
 		return &r.Item, nil
 	}
 	return nil, fmt.Errorf("item %d not found", id)

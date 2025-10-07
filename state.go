@@ -19,7 +19,7 @@ var WeaponsByID = map[int]*Weapon{}
 var ArmorByID = map[int]*Armor{}
 var ShieldsByID = map[int]*Shield{}
 var JewelryByID = map[int]*Jewelry{}
-var RodsWandsStavesByID = map[int]*RodWandStaff{}
+var LimitedUseItemsByID = map[int]*LimitedUseItem{}
 
 // CHARACTER
 
@@ -41,8 +41,7 @@ type Character struct {
 	Items            []int
 	ArmorID          int
 	ShieldID         int
-	ArcaneSpells     bool
-	DivineSpells     bool
+	Spellcasting     []SpellType
 	KnownSpells      []int // Known spells for Magic Users and Elves. Left empty for Clerics
 	MemorizedSpells  []MemorizedSpell
 }
@@ -83,12 +82,12 @@ type Item struct {
 type ItemType string
 
 const (
-	ItemGeneric      ItemType = "item"
-	ItemWeapon       ItemType = "weapon"
-	ItemArmor        ItemType = "armor"
-	ItemShield       ItemType = "shield"
-	ItemJewelry      ItemType = "jewelry"
-	ItemRodWandStaff ItemType = "rodwandstaff"
+	ItemGeneric        ItemType = "item"
+	ItemWeapon         ItemType = "weapon"
+	ItemArmor          ItemType = "armor"
+	ItemShield         ItemType = "shield"
+	ItemJewelry        ItemType = "jewelry"
+	ItemLimitedUseItem ItemType = "rodwandstaff"
 )
 
 type ItemLocation string
@@ -139,7 +138,7 @@ type Jewelry struct {
 	I'll account for this later. For now, this accounts for the Ring of Protection */
 }
 
-type RodWandStaff struct {
+type LimitedUseItem struct {
 	Item
 	Charges         int
 	ArcaneAllowed   bool
@@ -208,6 +207,19 @@ func CanLearnSpell(c *Character, spellID int) error {
 		return fmt.Errorf("spell %d does not exist", spellID)
 	}
 
+	// Check if the character is a spell caster of the proper type
+	characterMayCast := false
+	for _, st := range c.Spellcasting {
+		if spell.Type == st {
+			characterMayCast = true
+			break
+		}
+	}
+
+	if !characterMayCast {
+		return fmt.Errorf("%s cannot learn %s spells", c.Class, spell.Type)
+	}
+
 	// Check if already known
 	for _, id := range c.KnownSpells {
 		if id == spellID {
@@ -232,6 +244,12 @@ func CanLearnSpell(c *Character, spellID int) error {
 	allowed := GetSpellSlots(c.Class, c.Level, spellLevel)
 	if knownAtLevel >= allowed {
 		return fmt.Errorf("too many known spells at level %d (limit %d)", spellLevel, allowed)
+	}
+
+	// Determine if spell level is too high for the character at this level
+	permitted := MaxSpellLevelAvailable(c.Class, c.Level)
+	if spellLevel > permitted {
+		return fmt.Errorf("cannot learn spells at level %d (limit %d)", spellLevel, permitted)
 	}
 
 	return nil
@@ -347,11 +365,11 @@ func RegisterJewelry(j Jewelry) error {
 	return nil
 }
 
-func RegisterRodWandStaff(r RodWandStaff) error {
-	if _, exists := RodsWandsStavesByID[r.ID]; exists {
-		return fmt.Errorf("rod, wand, or staff with ID %d already registered", r.ID)
+func RegisterLimitedUseItem(r LimitedUseItem) error {
+	if _, exists := LimitedUseItemsByID[r.ID]; exists {
+		return fmt.Errorf("limited use item with ID %d already registered", r.ID)
 	}
-	RodsWandsStavesByID[r.ID] = &r
+	LimitedUseItemsByID[r.ID] = &r
 	return nil
 }
 
@@ -361,7 +379,7 @@ func UnregisterItem(id int) {
 	delete(ArmorByID, id)
 	delete(ShieldsByID, id)
 	delete(JewelryByID, id)
-	delete(RodsWandsStavesByID, id)
+	delete(LimitedUseItemsByID, id)
 }
 
 // GETTERS
@@ -386,6 +404,6 @@ func GetJewelryByID(id int) *Jewelry {
 	return JewelryByID[id]
 }
 
-func GetRodWandStaffByID(id int) *RodWandStaff {
-	return RodsWandsStavesByID[id]
+func GetLimitedUseItemByID(id int) *LimitedUseItem {
+	return LimitedUseItemsByID[id]
 }
