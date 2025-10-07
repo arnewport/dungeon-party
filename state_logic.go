@@ -47,7 +47,7 @@ func AddCharacter(p *Party, name string) Character {
 
 // DeleteCharacter moves all of the character's items to Limbo, then removes the character.
 func DeleteCharacter(charID int, p *Party) error {
-	_, err := findChar(p, charID)
+	_, err := FindChar(p, charID)
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func DeleteCharacter(charID int, p *Party) error {
 			return nil
 		}
 	}
-	// Shouldn't reach here since findChar succeeded, but be defensive.
+	// Shouldn't reach here since FindChar succeeded, but be defensive.
 	return fmt.Errorf("character %d disappeared during deletion", charID)
 }
 
@@ -223,7 +223,9 @@ func ValidateCharacterPatch(p CharacterPatch) error {
 }
 
 // Lookups
-func findChar(p *Party, id int) (*Character, error) {
+
+// FindChar Cycles through the party, looking for a character
+func FindChar(p *Party, id int) (*Character, error) {
 	for i := range p.Characters {
 		if p.Characters[i].ID == id {
 			return &p.Characters[i], nil
@@ -256,6 +258,14 @@ func FindItemByID(id int) (*Item, error) {
 }
 
 // Inventory utilities
+var nextItemID = 1
+
+func generateUniqueItemID() int {
+	id := nextItemID
+	nextItemID++
+	return id
+}
+
 func hasID(xs []int, id int) bool {
 	for _, v := range xs {
 		if v == id {
@@ -273,6 +283,8 @@ func removeID(xs []int, id int) []int {
 	}
 	return out
 }
+
+// ITEM LOGIC
 
 // ValidateCharacterInventory Core invariants for a single character (call after mutations or in tests)
 func ValidateCharacterInventory(c *Character) error {
@@ -311,7 +323,7 @@ func MoveItemToCharacter(itemID, charID int, p *Party) error {
 	if err != nil {
 		return err
 	}
-	ch, err := findChar(p, charID)
+	ch, err := FindChar(p, charID)
 	if err != nil {
 		return err
 	}
@@ -324,7 +336,7 @@ func MoveItemToCharacter(itemID, charID int, p *Party) error {
 
 	// if coming from another character, detach there
 	if it.Location == LocationCharacter && it.HolderID != charID {
-		if prev, _ := findChar(p, it.HolderID); prev != nil {
+		if prev, _ := FindChar(p, it.HolderID); prev != nil {
 			prev.Items = removeID(prev.Items, itemID)
 			if prev.ArmorID == itemID {
 				prev.ArmorID = 0
@@ -342,20 +354,20 @@ func MoveItemToCharacter(itemID, charID int, p *Party) error {
 	return nil
 }
 
-func MoveItemToParty(itemID int, p *Party) error { return moveItemToBucket(itemID, LocationParty, p) }
+func MoveItemToParty(itemID int, p *Party) error { return MoveItemToBucket(itemID, LocationParty, p) }
 func MoveItemToStorage(itemID int, p *Party) error {
-	return moveItemToBucket(itemID, LocationStorage, p)
+	return MoveItemToBucket(itemID, LocationStorage, p)
 }
-func MoveItemToLimbo(itemID int, p *Party) error { return moveItemToBucket(itemID, LocationLimbo, p) }
+func MoveItemToLimbo(itemID int, p *Party) error { return MoveItemToBucket(itemID, LocationLimbo, p) }
 
-func moveItemToBucket(itemID int, loc ItemLocation, p *Party) error {
+func MoveItemToBucket(itemID int, loc ItemLocation, p *Party) error {
 	it, err := FindItemByID(itemID)
 	if err != nil {
 		return err
 	}
 	// detach from character if needed
 	if it.Location == LocationCharacter {
-		if ch, _ := findChar(p, it.HolderID); ch != nil {
+		if ch, _ := FindChar(p, it.HolderID); ch != nil {
 			ch.Items = removeID(ch.Items, itemID)
 			if ch.ArmorID == itemID {
 				ch.ArmorID = 0
@@ -371,7 +383,7 @@ func moveItemToBucket(itemID int, loc ItemLocation, p *Party) error {
 }
 
 func EquipArmor(charID, itemID int, p *Party) error {
-	ch, _ := findChar(p, charID)
+	ch, _ := FindChar(p, charID)
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
@@ -413,7 +425,7 @@ func EquipArmor(charID, itemID int, p *Party) error {
 }
 
 func EquipShield(charID, itemID int, p *Party) error {
-	ch, _ := findChar(p, charID)
+	ch, _ := FindChar(p, charID)
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
@@ -443,7 +455,7 @@ func EquipShield(charID, itemID int, p *Party) error {
 
 // UnequipArmor clears a character's equipped armor, leaving the item in inventory.
 func UnequipArmor(charID int, p *Party) error {
-	ch, _ := findChar(p, charID)
+	ch, _ := FindChar(p, charID)
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
@@ -456,7 +468,7 @@ func UnequipArmor(charID int, p *Party) error {
 
 // UnequipShield clears a character's equipped shield, leaving the item in inventory.
 func UnequipShield(charID int, p *Party) error {
-	ch, _ := findChar(p, charID)
+	ch, _ := FindChar(p, charID)
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
@@ -478,7 +490,7 @@ func MoveAllFromCharacter(charID int, to ItemLocation, p *Party) error {
 		return fmt.Errorf("unsupported target location: %v", to)
 	}
 
-	ch, _ := findChar(p, charID)
+	ch, _ := FindChar(p, charID)
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
@@ -488,12 +500,12 @@ func MoveAllFromCharacter(charID int, to ItemLocation, p *Party) error {
 	copy(itemIDs, ch.Items)
 
 	for _, id := range itemIDs {
-		if err := moveItemToBucket(id, to, p); err != nil {
+		if err := MoveItemToBucket(id, to, p); err != nil {
 			return err
 		}
 	}
 
-	// After successful moves, ch.Items should already be cleared by moveItemToBucket detaching each item.
+	// After successful moves, ch.Items should already be cleared by MoveItemToBucket detaching each item.
 	// Belt-and-suspenders: ensure it’s empty.
 	ch.Items = ch.Items[:0]
 	ch.ArmorID = 0
@@ -505,7 +517,7 @@ func MoveAllFromCharacter(charID int, to ItemLocation, p *Party) error {
 // DumpInventory returns a human-readable string listing all items a character holds.
 // Marks equipped armor and shield.
 func DumpInventory(charID int, p *Party) (string, error) {
-	ch, _ := findChar(p, charID)
+	ch, _ := FindChar(p, charID)
 	if ch == nil {
 		return "", fmt.Errorf("character %d not found", charID)
 	}
@@ -537,12 +549,381 @@ func DumpInventory(charID int, p *Party) (string, error) {
 	return b.String(), nil
 }
 
-// ITEM
+// Spell utilities
 
-var nextItemID = 1
+var SpellsByID = map[int]Spell{}
 
-func generateUniqueItemID() int {
-	id := nextItemID
-	nextItemID++
-	return id
+// spellSlotTables[class][charLevel][spellLevel] = number of slots
+var spellSlotTables = map[CharacterClass]map[int]map[int]int{
+	ClassCleric: {
+		1:  {},
+		2:  {1: 1},
+		3:  {1: 2},
+		4:  {1: 2, 2: 1},
+		5:  {1: 2, 2: 2},
+		6:  {1: 2, 2: 2, 3: 1, 4: 1},
+		7:  {1: 2, 2: 2, 3: 2, 4: 1, 5: 1},
+		8:  {1: 3, 2: 3, 3: 2, 4: 2, 5: 1},
+		9:  {1: 3, 2: 3, 3: 3, 4: 2, 5: 2},
+		10: {1: 4, 2: 4, 3: 3, 4: 3, 5: 2},
+		11: {1: 4, 2: 4, 3: 4, 4: 3, 5: 3},
+		12: {1: 5, 2: 5, 3: 4, 4: 4, 5: 3},
+		13: {1: 5, 2: 5, 3: 5, 4: 4, 5: 4},
+		14: {1: 6, 2: 5, 3: 5, 4: 5, 5: 4},
+	},
+	ClassMagicUser: {
+		1:  {1: 1},
+		2:  {1: 2},
+		3:  {1: 2, 2: 1},
+		4:  {1: 2, 2: 2},
+		5:  {1: 2, 2: 2, 3: 1},
+		6:  {1: 2, 2: 2, 3: 2},
+		7:  {1: 3, 2: 2, 3: 2, 4: 1},
+		8:  {1: 3, 2: 3, 3: 2, 4: 2},
+		9:  {1: 3, 2: 3, 3: 3, 4: 2, 5: 1},
+		10: {1: 3, 2: 3, 3: 3, 4: 3, 5: 2},
+		11: {1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 1},
+		12: {1: 4, 2: 4, 3: 3, 4: 3, 5: 3, 6: 2},
+		13: {1: 4, 2: 4, 3: 4, 4: 3, 5: 3, 6: 3},
+		14: {1: 4, 2: 4, 3: 4, 4: 4, 5: 3, 6: 3},
+	},
+}
+
+// SPELL LOGIC
+
+type SpellValidationConfig struct {
+	EnforceKnown bool // cannot know more spells than you can cast
+	EnforceLevel bool // cannot learn spells of a higher level than you can cast (learning != memorizing)
+}
+
+var SpellRules = SpellValidationConfig{true, true}
+
+// Add & Remove Known Spells
+
+func AddKnownSpell(c *Character, spellID int) error {
+	if err := CanLearnSpell(c, spellID); err != nil {
+		return err
+	}
+	c.KnownSpells = append(c.KnownSpells, spellID)
+	return nil
+}
+
+func RemoveKnownSpell(c *Character, spellID int) error {
+	for i, id := range c.KnownSpells {
+		if id == spellID {
+			c.KnownSpells = append(c.KnownSpells[:i], c.KnownSpells[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("spell %d not known", spellID)
+}
+
+func AddMemorizedSpell(c *Character, spellID int) error {
+	// Check that the spell exists
+	spell, ok := SpellsByID[spellID]
+	if !ok {
+		return fmt.Errorf("spell %d does not exist", spellID)
+	}
+
+	// Must be known
+	if err := checkSpellIsKnown(c, spellID); err != nil {
+		return err
+	}
+
+	// Must not exceed per-level memorized count
+	if err := checkMemorizedSpellSlotLimit(c, spell.Level); err != nil {
+		return err
+	}
+
+	c.MemorizedSpells = append(c.MemorizedSpells, MemorizedSpell{SpellID: spellID})
+	return nil
+}
+
+func RemoveMemorizedSpell(c *Character, spellID int) error {
+	for i, ms := range c.MemorizedSpells {
+		if ms.SpellID == spellID {
+			c.MemorizedSpells = append(c.MemorizedSpells[:i], c.MemorizedSpells[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("spell %d is not memorized", spellID)
+}
+
+// Known Spell Helpers
+
+// Check if the spell exists
+func getSpellIfExists(spellID int) (Spell, error) {
+	spell, ok := SpellsByID[spellID]
+	if !ok {
+		return Spell{}, fmt.Errorf("spell %d does not exist", spellID)
+	}
+	return spell, nil
+}
+
+// Check if the character is a spell caster of the proper type
+func checkIfCharacterMayCast(c *Character, spellType SpellType) error {
+	for _, st := range c.Spellcasting {
+		if st == spellType {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s cannot learn %s spells", c.Class, spellType)
+}
+
+// Determine if the spell is already known (for the purpose of not learning duplicate spells)
+func checkIfAlreadyKnown(c *Character, spellID int, spellName string) error {
+	for _, id := range c.KnownSpells {
+		if id == spellID {
+			return fmt.Errorf("spell %s already known", spellName)
+		}
+	}
+	return nil
+}
+
+// Determine how many spells of this level are already known
+func countKnownSpellsAtLevel(c *Character, level int) int {
+	count := 0
+	for _, id := range c.KnownSpells {
+		s, ok := SpellsByID[id]
+		if !ok {
+			continue
+		}
+		if s.Level == level {
+			count++
+		}
+	}
+	return count
+}
+
+// Determine if spell level is too high for the character at this level
+func checkSpellLevelAvailable(c *Character, spellLevel int) error {
+	maxLevel := MaxSpellLevelAvailable(c.Class, c.Level)
+	if spellLevel > maxLevel {
+		return fmt.Errorf("cannot learn spells at level %d (limit %d)", spellLevel, maxLevel)
+	}
+	return nil
+}
+
+// Determine how many spells can be known at this level
+func checkSpellSlotLimit(c *Character, spellLevel int) error {
+	known := countKnownSpellsAtLevel(c, spellLevel)
+	allowed := GetSpellSlots(c.Class, c.Level, spellLevel)
+
+	if known >= allowed {
+		return fmt.Errorf("too many known spells at level %d (limit %d)", spellLevel, allowed)
+	}
+	return nil
+}
+
+// Memorized Spell Helpers
+
+// Determine if the spell is known (for the purpose of memorization)
+func checkSpellIsKnown(c *Character, spellID int) error {
+	for _, id := range c.KnownSpells {
+		if id == spellID {
+			return nil
+		}
+	}
+	return fmt.Errorf("spell %d is not known", spellID)
+}
+
+// Determine how many spells can be memorized at this level
+func checkMemorizedSpellSlotLimit(c *Character, spellLevel int) error {
+	count := 0
+	for _, ms := range c.MemorizedSpells {
+		s, ok := SpellsByID[ms.SpellID]
+		if !ok {
+			continue
+		}
+		if s.Level == spellLevel {
+			count++
+		}
+	}
+
+	allowed := GetSpellSlots(c.Class, c.Level, spellLevel)
+	if count >= allowed {
+		return fmt.Errorf("cannot memorize more level %d spells (limit: %d)", spellLevel, allowed)
+	}
+	return nil
+}
+
+func isSpellKnown(c *Character, spellID int) bool {
+	for _, id := range c.KnownSpells {
+		if id == spellID {
+			return true
+		}
+	}
+	return false
+}
+
+//
+
+// CanLearnSpell Determine if a spell can be learned by applying several checks
+func CanLearnSpell(c *Character, spellID int) error {
+
+	// Check if the spell exists
+	spell, err := getSpellIfExists(spellID)
+	if err != nil {
+		return err
+	}
+
+	// Check if the character is a spell caster of the proper type
+	if err := checkIfCharacterMayCast(c, spell.Type); err != nil {
+		return err
+	}
+
+	// Check if already known
+	if err := checkIfAlreadyKnown(c, spellID, spell.Name); err != nil {
+		return err
+	}
+
+	// Determine if spell level is too high for the character at this level
+	if err := checkSpellLevelAvailable(c, spell.Level); err != nil {
+		return err
+	}
+
+	// Determine how many spells can be known at this level
+	if err := checkSpellSlotLimit(c, spell.Level); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidateSpells Validates known spells
+func ValidateSpells(c *Character) []error {
+	var errs []error
+	seen := make(map[int]bool)        // track duplicates
+	countByLevel := make(map[int]int) // for slot limits
+
+	for _, id := range c.KnownSpells {
+		spell, ok := SpellsByID[id]
+		if !ok {
+			errs = append(errs, fmt.Errorf("spell %d does not exist", id))
+			continue
+		}
+
+		// Check for duplicates
+		if seen[id] {
+			errs = append(errs, fmt.Errorf("duplicate spell: %s", spell.Name))
+		}
+		seen[id] = true
+
+		// Check if character can cast the type
+		if err := checkIfCharacterMayCast(c, spell.Type); err != nil {
+			errs = append(errs, fmt.Errorf("spell %s: %w", spell.Name, err))
+		}
+
+		// Check spell level availability
+		if err := checkSpellLevelAvailable(c, spell.Level); err != nil {
+			errs = append(errs, fmt.Errorf("spell %s: %w", spell.Name, err))
+		}
+
+		// Tally for slot limits
+		countByLevel[spell.Level]++
+	}
+
+	// Check count limits per level
+	for level, count := range countByLevel {
+		allowed := GetSpellSlots(c.Class, c.Level, level)
+		if count > allowed {
+			errs = append(errs, fmt.Errorf("too many known spells at level %d: %d (limit: %d)", level, count, allowed))
+		}
+	}
+
+	return errs
+}
+
+func GetSpellSlots(class CharacterClass, level int, spellLevel int) int {
+	byClass, ok := spellSlotTables[class]
+	if !ok {
+		return 0
+	}
+	byLevel, ok := byClass[level]
+	if !ok {
+		return 0
+	}
+	return byLevel[spellLevel]
+}
+
+func MaxSpellLevelAvailable(class CharacterClass, level int) int {
+	classTable, ok := spellSlotTables[class]
+	if !ok {
+		return 0
+	}
+	levelTable, ok := classTable[level]
+	if !ok {
+		return 0
+	}
+
+	maxLevel := 0
+	for spellLevel, count := range levelTable {
+		if count > 0 && spellLevel > maxLevel {
+			maxLevel = spellLevel
+		}
+	}
+
+	return maxLevel
+}
+
+func CastMemorizedSpell(c *Character, spellID int) error {
+	for i := range c.MemorizedSpells {
+		if c.MemorizedSpells[i].SpellID == spellID && !c.MemorizedSpells[i].Cast {
+			c.MemorizedSpells[i].Cast = true
+			return nil
+		}
+	}
+	return fmt.Errorf("no uncast memorized copy of spell %d found", spellID)
+}
+
+func UncastMemorizedSpell(c *Character, spellID int) error {
+	for i := range c.MemorizedSpells {
+		if c.MemorizedSpells[i].SpellID == spellID && c.MemorizedSpells[i].Cast {
+			c.MemorizedSpells[i].Cast = false
+			return nil
+		}
+	}
+	return fmt.Errorf("no cast memorized copy of spell %d found", spellID)
+}
+
+func ResetAllMemorizedSpells(c *Character) {
+	for i := range c.MemorizedSpells {
+		c.MemorizedSpells[i].Cast = false
+	}
+}
+
+func ValidateMemorizedSpells(c *Character) []error {
+	var errs []error
+	perLevelCount := map[int]int{}
+
+	for _, ms := range c.MemorizedSpells {
+		spell, ok := SpellsByID[ms.SpellID]
+		if !ok {
+			errs = append(errs, fmt.Errorf("memorized spell %d does not exist", ms.SpellID))
+			continue
+		}
+
+		// Check it's known
+		if !isSpellKnown(c, ms.SpellID) {
+			errs = append(errs, fmt.Errorf("memorized spell %s is not known", spell.Name))
+		}
+
+		// Check level availability
+		if spell.Level > MaxSpellLevelAvailable(c.Class, c.Level) {
+			errs = append(errs, fmt.Errorf("memorized spell %s is too high level (level %d)", spell.Name, spell.Level))
+		}
+
+		// Tally per-level count
+		perLevelCount[spell.Level]++
+	}
+
+	// Check slot limits
+	for level, count := range perLevelCount {
+		allowed := GetSpellSlots(c.Class, c.Level, level)
+		if count > allowed {
+			errs = append(errs, fmt.Errorf("too many memorized spells at level %d: %d (limit: %d)", level, count, allowed))
+		}
+	}
+
+	return errs
 }
