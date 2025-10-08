@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -22,19 +23,55 @@ func FindItemByID(id int) (*Item, error) {
 	if j, ok := JewelryByID[id]; ok {
 		return &j.Item, nil
 	}
-	if r, ok := LimitedUseItemsByID[id]; ok {
-		return &r.Item, nil
+	if lu, ok := LimitedUseItemsByID[id]; ok {
+		return &lu.Item, nil
 	}
 	return nil, fmt.Errorf("item %d not found", id)
 }
 
 // Inventory utilities
+
+const NoItemEquipped = 0
+
 var nextItemID = 1
 
 func generateUniqueItemID() int {
 	id := nextItemID
 	nextItemID++
 	return id
+}
+
+// Inventory helpers
+
+func DetachItemFromCharacter(p *Party, itemID int) {
+	it, err := FindItemByID(itemID)
+	if err != nil {
+		log.Printf("warning: attempted to detach unknown item %d", itemID)
+		return
+	}
+
+	if it.Location != LocationCharacter {
+		return // not held by a character — nothing to do
+	}
+
+	ch, err := FindChar(p, it.HolderID)
+	if err != nil {
+		log.Printf("warning: item %d claimed by missing character %d", itemID, it.HolderID)
+		return
+	}
+
+	// Remove from inventory
+	ch.Items = removeID(ch.Items, itemID)
+
+	// Unequip if necessary
+	if ch.ArmorID == itemID {
+		ch.ArmorID = NoItemEquipped
+	}
+	if ch.ShieldID == itemID {
+		ch.ShieldID = NoItemEquipped
+	}
+
+	// Item is now unbound — you'll want to update .Location and .HolderID externally
 }
 
 // ITEM LOGIC
@@ -55,13 +92,13 @@ func ValidateCharacterInventory(c *Character) error {
 		seen[id] = struct{}{}
 	}
 	// equip checks
-	if c.ArmorID != 0 {
+	if c.ArmorID != NoItemEquipped {
 		it := ItemsByID[c.ArmorID]
 		if !hasID(c.Items, c.ArmorID) || it.Type != ItemArmor {
 			return fmt.Errorf("armor id invalid or not armor")
 		}
 	}
-	if c.ShieldID != 0 {
+	if c.ShieldID != NoItemEquipped {
 		it := ItemsByID[c.ShieldID]
 		if !hasID(c.Items, c.ShieldID) || it.Type != ItemShield {
 			return fmt.Errorf("shield id invalid or not shield")
@@ -89,13 +126,17 @@ func MoveItemToCharacter(itemID, charID int, p *Party) error {
 
 	// if coming from another character, detach there
 	if it.Location == LocationCharacter && it.HolderID != charID {
-		if prev, _ := FindChar(p, it.HolderID); prev != nil {
+		prev, err := FindChar(p, it.HolderID)
+		if err != nil {
+			log.Printf("warning: item %d claimed by missing character %d", itemID, it.HolderID)
+			// Fallthrough: still allow move
+		} else {
 			prev.Items = removeID(prev.Items, itemID)
 			if prev.ArmorID == itemID {
-				prev.ArmorID = 0
+				prev.ArmorID = NoItemEquipped
 			}
 			if prev.ShieldID == itemID {
-				prev.ShieldID = 0
+				prev.ShieldID = NoItemEquipped
 			}
 		}
 	}
@@ -104,6 +145,9 @@ func MoveItemToCharacter(itemID, charID int, p *Party) error {
 	it.Location = LocationCharacter
 	it.HolderID = charID
 	ch.Items = append(ch.Items, itemID)
+	if err := ValidateCharacterInventory(ch); err != nil {
+		return fmt.Errorf("post-move validation failed: %w", err)
+	}
 	return nil
 }
 
@@ -123,10 +167,10 @@ func MoveItemToBucket(itemID int, loc ItemLocation, p *Party) error {
 		if ch, _ := FindChar(p, it.HolderID); ch != nil {
 			ch.Items = removeID(ch.Items, itemID)
 			if ch.ArmorID == itemID {
-				ch.ArmorID = 0
+				ch.ArmorID = NoItemEquipped
 			}
 			if ch.ShieldID == itemID {
-				ch.ShieldID = 0
+				ch.ShieldID = NoItemEquipped
 			}
 		}
 	}
@@ -212,10 +256,10 @@ func UnequipArmor(charID int, p *Party) error {
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
-	if ch.ArmorID == 0 {
+	if ch.ArmorID == NoItemEquipped {
 		return nil // nothing equipped; no-op
 	}
-	ch.ArmorID = 0
+	ch.ArmorID = NoItemEquipped
 	return nil
 }
 
@@ -225,10 +269,10 @@ func UnequipShield(charID int, p *Party) error {
 	if ch == nil {
 		return fmt.Errorf("character %d not found", charID)
 	}
-	if ch.ShieldID == 0 {
+	if ch.ShieldID == NoItemEquipped {
 		return nil // nothing equipped; no-op
 	}
-	ch.ShieldID = 0
+	ch.ShieldID = NoItemEquipped
 	return nil
 }
 
@@ -261,8 +305,8 @@ func MoveAllFromCharacter(charID int, to ItemLocation, p *Party) error {
 	// After successful moves, ch.Items should already be cleared by MoveItemToBucket detaching each item.
 	// Belt-and-suspenders: ensure it’s empty.
 	ch.Items = ch.Items[:0]
-	ch.ArmorID = 0
-	ch.ShieldID = 0
+	ch.ArmorID = NoItemEquipped
+	ch.ShieldID = NoItemEquipped
 
 	return nil
 }

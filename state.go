@@ -87,7 +87,7 @@ const (
 	ItemArmor          ItemType = "armor"
 	ItemShield         ItemType = "shield"
 	ItemJewelry        ItemType = "jewelry"
-	ItemLimitedUseItem ItemType = "rodwandstaff"
+	ItemLimitedUseItem ItemType = "limiteduseitem"
 )
 
 type ItemLocation string
@@ -207,11 +207,11 @@ func RegisterJewelry(j Jewelry) error {
 	return nil
 }
 
-func RegisterLimitedUseItem(r LimitedUseItem) error {
-	if _, exists := LimitedUseItemsByID[r.ID]; exists {
-		return fmt.Errorf("limited use item with ID %d already registered", r.ID)
+func RegisterLimitedUseItem(lu LimitedUseItem) error {
+	if _, exists := LimitedUseItemsByID[lu.ID]; exists {
+		return fmt.Errorf("limited use item with ID %d already registered", lu.ID)
 	}
-	LimitedUseItemsByID[r.ID] = &r
+	LimitedUseItemsByID[lu.ID] = &lu
 	return nil
 }
 
