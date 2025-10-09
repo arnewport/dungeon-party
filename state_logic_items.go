@@ -6,6 +6,20 @@ import (
 	"strings"
 )
 
+// Inventory utilities
+
+const NoItemEquipped = 0
+
+var nextItemID = 1
+
+func generateUniqueItemID() int {
+	id := nextItemID
+	nextItemID++
+	return id
+}
+
+// Inventory helpers
+
 // FindItemByID Cycles through all registries, looking for an item
 func FindItemByID(id int) (*Item, error) {
 	if it, ok := ItemsByID[id]; ok {
@@ -28,20 +42,6 @@ func FindItemByID(id int) (*Item, error) {
 	}
 	return nil, fmt.Errorf("item %d not found", id)
 }
-
-// Inventory utilities
-
-const NoItemEquipped = 0
-
-var nextItemID = 1
-
-func generateUniqueItemID() int {
-	id := nextItemID
-	nextItemID++
-	return id
-}
-
-// Inventory helpers
 
 func DetachItemFromCharacter(p *Party, itemID int) {
 	it, err := FindItemByID(itemID)
@@ -118,33 +118,22 @@ func MoveItemToCharacter(itemID, charID int, p *Party) error {
 		return err
 	}
 	if hasID(ch.Items, itemID) {
-		return nil
-	} // already there
+		return nil // already there
+	}
 	if len(ch.Items) >= 10 {
 		return fmt.Errorf("inventory full")
 	}
 
-	// if coming from another character, detach there
+	// Detach if coming from another character
 	if it.Location == LocationCharacter && it.HolderID != charID {
-		prev, err := FindChar(p, it.HolderID)
-		if err != nil {
-			log.Printf("warning: item %d claimed by missing character %d", itemID, it.HolderID)
-			// Fallthrough: still allow move
-		} else {
-			prev.Items = removeID(prev.Items, itemID)
-			if prev.ArmorID == itemID {
-				prev.ArmorID = NoItemEquipped
-			}
-			if prev.ShieldID == itemID {
-				prev.ShieldID = NoItemEquipped
-			}
-		}
+		DetachItemFromCharacter(p, itemID)
 	}
 
-	// mutate
+	// Mutate
 	it.Location = LocationCharacter
 	it.HolderID = charID
 	ch.Items = append(ch.Items, itemID)
+
 	if err := ValidateCharacterInventory(ch); err != nil {
 		return fmt.Errorf("post-move validation failed: %w", err)
 	}
@@ -162,18 +151,12 @@ func MoveItemToBucket(itemID int, loc ItemLocation, p *Party) error {
 	if err != nil {
 		return err
 	}
-	// detach from character if needed
+
+	// Detach if held by a character
 	if it.Location == LocationCharacter {
-		if ch, _ := FindChar(p, it.HolderID); ch != nil {
-			ch.Items = removeID(ch.Items, itemID)
-			if ch.ArmorID == itemID {
-				ch.ArmorID = NoItemEquipped
-			}
-			if ch.ShieldID == itemID {
-				ch.ShieldID = NoItemEquipped
-			}
-		}
+		DetachItemFromCharacter(p, itemID)
 	}
+
 	it.Location = loc
 	it.HolderID = 0
 	return nil
@@ -212,6 +195,7 @@ func EquipArmor(charID, itemID int, p *Party) error {
 	if !ok {
 		return fmt.Errorf("armor data for item %d not found", itemID)
 	}
+	// if a class has no armor restrictions, the following check is skipped
 	if allowed, ok := allowedArmorTypes[ch.Class]; ok {
 		if !allowed[armor.Type] {
 			return fmt.Errorf("%s cannot wear %s", ch.Class, armor.Type)
@@ -279,6 +263,7 @@ func UnequipShield(charID int, p *Party) error {
 // MoveAllFromCharacter moves every item from the given character to the specified bucket location.
 // Allowed targets: LocationParty, LocationStorage, LocationLimbo.
 // It clears ArmorID/ShieldID if those items are moved.
+// TODO: Make MoveAllFromCharacter atomic
 func MoveAllFromCharacter(charID int, to ItemLocation, p *Party) error {
 	if to == LocationCharacter || to == LocationNone {
 		return fmt.Errorf("invalid target location for bulk move: %v", to)
@@ -308,6 +293,270 @@ func MoveAllFromCharacter(charID int, to ItemLocation, p *Party) error {
 	ch.ArmorID = NoItemEquipped
 	ch.ShieldID = NoItemEquipped
 
+	return nil
+}
+
+// DeleteItem fully removes an item from the system.
+// It detaches the item from any character and deletes it from all registries.
+// This is a permanent deletion — use with care.
+func DeleteItem(itemID int, p *Party) error {
+	it, err := FindItemByID(itemID)
+	if err != nil {
+		return fmt.Errorf("cannot delete item %d: %w", itemID, err)
+	}
+
+	// Detach from character if needed
+	if it.Location == LocationCharacter {
+		DetachItemFromCharacter(p, itemID)
+	}
+
+	// Remove from all global registries
+	delete(ItemsByID, itemID)
+	delete(WeaponsByID, itemID)
+	delete(ArmorByID, itemID)
+	delete(ShieldsByID, itemID)
+	delete(JewelryByID, itemID)
+	delete(LimitedUseItemsByID, itemID)
+
+	return nil
+}
+
+// Create Items
+
+// newBaseItem creates a base Item with a unique ID.
+// It is used internally by all item subtype constructors.
+// The returned Item is not registered anywhere — it must be wrapped and inserted by the caller.
+func newBaseItem(name string, itemType ItemType, loc ItemLocation) Item {
+	return Item{
+		ID:       generateUniqueItemID(),
+		Name:     name,
+		Type:     itemType,
+		Location: loc,
+		HolderID: 0,
+	}
+}
+
+func NewGenericItem(name string, loc ItemLocation) *Item {
+	it := &Item{
+		ID:       generateUniqueItemID(),
+		Name:     name,
+		Type:     ItemGeneric,
+		Location: loc,
+		HolderID: 0,
+	}
+	ItemsByID[it.ID] = it
+	return it
+}
+
+func NewWeapon(
+	name string,
+	damage int,
+	bonus int,
+	isMelee bool,
+	isRanged bool,
+	isTwoHanded bool,
+	isBlunt bool,
+	loc ItemLocation,
+) *Weapon {
+	w := &Weapon{
+		Item:        newBaseItem(name, ItemWeapon, loc),
+		Damage:      damage,
+		Bonus:       bonus,
+		IsMelee:     isMelee,
+		IsRanged:    isRanged,
+		IsTwoHanded: isTwoHanded,
+		IsBlunt:     isBlunt,
+	}
+	WeaponsByID[w.ID] = w
+	return w
+}
+
+func NewArmor(
+	name string,
+	armorType ArmorType,
+	bonus int,
+	loc ItemLocation,
+) *Armor {
+	a := &Armor{
+		Item:  newBaseItem(name, ItemArmor, loc),
+		Type:  armorType,
+		Bonus: bonus,
+	}
+	ArmorByID[a.ID] = a
+	return a
+}
+
+func NewShield(name string, bonus int, loc ItemLocation) *Shield {
+	s := &Shield{
+		Item:  newBaseItem(name, ItemShield, loc),
+		Bonus: bonus,
+	}
+	ShieldsByID[s.ID] = s
+	return s
+}
+
+func NewJewelry(name string, armorBonus int, saveBonus int, loc ItemLocation) *Jewelry {
+	j := &Jewelry{
+		Item:       newBaseItem(name, ItemJewelry, loc),
+		ArmorBonus: armorBonus,
+		SaveBonus:  saveBonus,
+	}
+	JewelryByID[j.ID] = j
+	return j
+}
+
+func NewLimitedUseItem(
+	name string,
+	charges int,
+	arcaneAllowed bool,
+	divineAllowed bool,
+	nonMagicAllowed bool,
+	loc ItemLocation,
+) *LimitedUseItem {
+	lu := &LimitedUseItem{
+		Item:            newBaseItem(name, ItemLimitedUse, loc),
+		Charges:         charges,
+		ArcaneAllowed:   arcaneAllowed,
+		DivineAllowed:   divineAllowed,
+		NonMagicAllowed: nonMagicAllowed,
+	}
+	LimitedUseItemsByID[lu.ID] = lu
+	return lu
+}
+
+// Edit Items
+
+// EditGenericItem updates an existing generic item by ID.
+func EditGenericItem(id int, name, url string) error {
+	it, ok := ItemsByID[id]
+	if !ok {
+		return fmt.Errorf("item %d not found", id)
+	}
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("name cannot be empty")
+	}
+	it.Name = name
+	it.URL = url
+	return nil
+}
+
+// EditWeapon updates an existing weapon item by ID.
+// Only editable fields are modified.
+func EditWeapon(id int, newDamage, newBonus int, isMelee, isRanged, isTwoHanded, isBlunt bool) error {
+	weapon, ok := WeaponsByID[id]
+	if !ok {
+		return fmt.Errorf("weapon %d not found", id)
+	}
+
+	if newDamage < 1 || newDamage > 10 {
+		return fmt.Errorf("damage must be between 1 and 10")
+	}
+
+	if newBonus < 0 || newBonus > 3 {
+		return fmt.Errorf("bonus must be between 0 and 3")
+	}
+
+	weapon.Damage = newDamage
+	weapon.Bonus = newBonus
+	weapon.IsMelee = isMelee
+	weapon.IsRanged = isRanged
+	weapon.IsTwoHanded = isTwoHanded
+	weapon.IsBlunt = isBlunt
+
+	return nil
+}
+
+// EditArmor updates an existing armor item by ID.
+func EditArmor(id int, armorType ArmorType, bonus int, p *Party) error {
+	armor, ok := ArmorByID[id]
+	if !ok {
+		return fmt.Errorf("armor %d not found", id)
+	}
+
+	// Optional: Validate armor type
+	validTypes := map[ArmorType]bool{
+		Robes: true, Leather: true, Chain: true, Plate: true,
+	}
+	if !validTypes[armorType] {
+		return fmt.Errorf("invalid armor type: %s", armorType)
+	}
+
+	if bonus < 0 || bonus > 3 {
+		return fmt.Errorf("bonus must be between 0 and 3")
+	}
+
+	// Check if the armor is currently equipped by a character
+	if armor.Location == LocationCharacter && armor.HolderID != 0 {
+		ch, err := FindChar(p, armor.HolderID)
+		if err != nil {
+			return fmt.Errorf("armor %d is equipped by missing character %d", id, armor.HolderID)
+		}
+
+		// Determine if this class is still allowed to wear the edited armor
+		allowedArmorTypes := map[CharacterClass]map[ArmorType]bool{
+			ClassMagicUser: {Robes: true},
+			ClassThief:     {Robes: true, Leather: true},
+		}
+
+		if allowed, ok := allowedArmorTypes[ch.Class]; ok {
+			if !allowed[armorType] {
+				return fmt.Errorf(
+					"cannot change armor: %s is wearing this item and cannot wear %s",
+					ch.Class, armorType,
+				)
+			}
+		}
+	}
+
+	armor.Type = armorType
+	armor.Bonus = bonus
+
+	return nil
+}
+
+// EditShield updates an existing shield item by ID.
+func EditShield(id int, bonus int) error {
+	shield, ok := ShieldsByID[id]
+	if !ok {
+		return fmt.Errorf("shield %d not found", id)
+	}
+	if bonus < 0 || bonus > 3 {
+		return fmt.Errorf("bonus must be between 0 and 3")
+	}
+	shield.Bonus = bonus
+	return nil
+}
+
+// EditJewelry updates an existing jewelry item by ID.
+func EditJewelry(id, armorBonus, saveBonus int) error {
+	j, ok := JewelryByID[id]
+	if !ok {
+		return fmt.Errorf("jewelry %d not found", id)
+	}
+	if armorBonus < 0 || armorBonus > 3 {
+		return fmt.Errorf("armor bonus must be between 0 and 3")
+	}
+	if saveBonus < 0 || saveBonus > 3 {
+		return fmt.Errorf("save bonus must be between 0 and 3")
+	}
+	j.ArmorBonus = armorBonus
+	j.SaveBonus = saveBonus
+	return nil
+}
+
+// EditLimitedUseItem updates an existing limited use item by ID.
+func EditLimitedUseItem(id int, charges int, arcane, divine, nonmagic bool) error {
+	lu, ok := LimitedUseItemsByID[id]
+	if !ok {
+		return fmt.Errorf("limited-use item %d not found", id)
+	}
+	if charges < 0 {
+		return fmt.Errorf("charges cannot be negative")
+	}
+	lu.Charges = charges
+	lu.ArcaneAllowed = arcane
+	lu.DivineAllowed = divine
+	lu.NonMagicAllowed = nonmagic
 	return nil
 }
 

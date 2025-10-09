@@ -82,12 +82,12 @@ type Item struct {
 type ItemType string
 
 const (
-	ItemGeneric        ItemType = "item"
-	ItemWeapon         ItemType = "weapon"
-	ItemArmor          ItemType = "armor"
-	ItemShield         ItemType = "shield"
-	ItemJewelry        ItemType = "jewelry"
-	ItemLimitedUseItem ItemType = "limiteduseitem"
+	ItemGeneric    ItemType = "item"
+	ItemWeapon     ItemType = "weapon"
+	ItemArmor      ItemType = "armor"
+	ItemShield     ItemType = "shield"
+	ItemJewelry    ItemType = "jewelry"
+	ItemLimitedUse ItemType = "limiteduseitem"
 )
 
 type ItemLocation string
