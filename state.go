@@ -12,15 +12,6 @@ type Party struct {
 	Characters []Character
 }
 
-// REGISTRIES
-
-var ItemsByID = map[int]*Item{}
-var WeaponsByID = map[int]*Weapon{}
-var ArmorByID = map[int]*Armor{}
-var ShieldsByID = map[int]*Shield{}
-var JewelryByID = map[int]*Jewelry{}
-var LimitedUseItemsByID = map[int]*LimitedUseItem{}
-
 // CHARACTER
 
 type Character struct {
@@ -32,6 +23,7 @@ type Character struct {
 	ArmorBonus       int
 	RolledHitPoints  int
 	CurrentHitPoints int
+	MaximumHitPoints int
 	Strength         int
 	Intelligence     int
 	Wisdom           int
@@ -146,6 +138,8 @@ type LimitedUseItem struct {
 	NonMagicAllowed bool
 }
 
+// SPELLS
+
 type Spell struct {
 	ID    int
 	Name  string
@@ -164,6 +158,15 @@ type MemorizedSpell struct {
 	SpellID int
 	Cast    bool
 }
+
+// REGISTRIES
+
+var ItemsByID = map[int]*Item{}
+var WeaponsByID = map[int]*Weapon{}
+var ArmorByID = map[int]*Armor{}
+var ShieldsByID = map[int]*Shield{}
+var JewelryByID = map[int]*Jewelry{}
+var LimitedUseItemsByID = map[int]*LimitedUseItem{}
 
 // REGISTRATION
 

@@ -27,6 +27,7 @@ func AddCharacter(p *Party, name string) Character {
 		ArmorBonus:       0,
 		RolledHitPoints:  0,
 		CurrentHitPoints: 0,
+		MaximumHitPoints: 0,
 		Strength:         3,
 		Intelligence:     3,
 		Wisdom:           3,
@@ -89,6 +90,9 @@ func ApplyCharacterPatch(c *Character, patch CharacterPatch) {
 	if patch.CurrentHitPoints != nil {
 		c.CurrentHitPoints = *patch.CurrentHitPoints
 	}
+	if patch.MaximumHitPoints != nil {
+		c.MaximumHitPoints = *patch.MaximumHitPoints
+	}
 	if patch.Strength != nil {
 		c.Strength = *patch.Strength
 	}
@@ -135,6 +139,7 @@ type CharacterPatch struct {
 	ArmorBonus       *int
 	RolledHitPoints  *int
 	CurrentHitPoints *int
+	MaximumHitPoints *int
 	Strength         *int
 	Intelligence     *int
 	Wisdom           *int
